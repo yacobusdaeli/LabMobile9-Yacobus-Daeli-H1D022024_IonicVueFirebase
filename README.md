@@ -1215,3 +1215,271 @@ onUnmounted(() => {
 ```
 - `onMounted`: Memuat data awal dan memperbarui waktu setiap 1 menit.
 - `onUnmounted`: Membersihkan interval saat komponen dilepas.
+
+
+# Implementasi Firestore untuk database
+```typescript
+// modifikasi src/utils/firebase.ts
+import { getFirestore } from 'firebase/firestore';
+
+const db = getFirestore(firebase);
+
+export { auth, googleProvider, db };
+```
+
+Kode ini bertujuan untuk mengatur integrasi dengan Firebase, khususnya fitur Firestore, dan mengekspor beberapa layanan Firebase untuk digunakan di seluruh aplikasi.
+
+- Import getFireStore, Fungsi dari Firebase SDK yang digunakan untuk menginisialisasi Firestore, layanan database cloud milik Firebase.
+
+- `const db = getFirestore(firebase);`, adalah untuk Inisialisasi Firestore dengan parameter firebase. variabel db akan menjadi referensi utama untuk database
+
+- `export {auth,googleProvider, db}, adalah untuk mengekspor beberapa entitas seperti auth, googleProvider (autentikasi google), db untuk database.
+
+# firestore.ts
+
+```typescript
+// src/utils/firestore.ts
+import { auth, db } from "./firebase";
+import {
+    collection,
+    addDoc,
+    getDocs,
+    doc,
+    updateDoc,
+    deleteDoc,
+    query,
+    orderBy,
+    Timestamp
+} from 'firebase/firestore';
+
+// interface data
+export interface Todo {
+    id?: string;
+    title: string;
+    description: string;
+    status: boolean;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+
+// operasi CRUD
+export const firestoreService = {
+    // get collection ref
+    getTodoRef() {
+        const uid = auth.currentUser?.uid;
+        if (!uid) throw new Error('User not authenticated');
+        return collection(db, 'users', uid, 'todos');
+    },
+
+		// create
+    async addTodo(todo: Omit<Todo, 'id'>) {
+        try {
+            const todoRef = this.getTodoRef();
+            const docRef = await addDoc(todoRef, {
+                ...todo,
+                status: false,
+                createdAt: Timestamp.now(),
+                updatedAt: Timestamp.now()
+            });
+            return docRef.id;
+        } catch (error) {
+            console.error('Error Tambah Todo:', error);
+            throw error;
+        }
+    },
+
+		// read
+    async getTodos(): Promise<Todo[]> {
+        try {
+            const todoRef = this.getTodoRef();
+            const q = query(todoRef, orderBy('updatedAt', 'desc'));
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map((doc) => ({
+                id: doc.id,
+                ...doc.data()
+            } as Todo));
+        } catch (error) {
+            console.error('Error Get Todos:', error);
+            throw error;
+        }
+    },
+
+		// update
+    async updateTodo(id: string, todo: Partial<Todo>) {
+        try {
+            const todoRef = this.getTodoRef();
+            const docRef = doc(todoRef, id);
+            await updateDoc(docRef, {
+                ...todo,
+                updatedAt: Timestamp.now()
+            });
+        } catch (error) {
+            console.error('Error Update Todo:', error);
+            throw error;
+        }
+    },
+
+		// delete
+    async deleteTodo(id: string) {
+        try {
+            const todoRef = this.getTodoRef();
+            const docRef = doc(todoRef, id);
+            await deleteDoc(docRef);
+        } catch (error) {
+            console.error('Error Delete Todo:', error);
+            throw error;
+        }
+    },
+
+		// update status
+    async updateStatus(id: string, status: boolean) {
+        try {
+            const todoRef = this.getTodoRef();
+            const docRef = doc(todoRef, id);
+            await updateDoc(docRef, { status: status, updatedAt: Timestamp.now() });
+        } catch (error) {
+            console.error('Error Update Status:', error);
+            throw error;
+        }
+    }
+
+}
+```
+
+Kode diatas adalah untuk mengelola data Todo menggunakan Firebase Firestore. File ini mencakup operasi CRUD (Create, Read, Update, Delete) dan update status untuk koleksi todos. Setiap pengguna memiliki koleksi todos masing-masing yang diidentifikasi oleh UID.
+
+1. Import Modul dan Dependensi
+```typescript
+import { auth, db } from "./firebase";
+import {
+    collection,
+    addDoc,
+    getDocs,
+    doc,
+    updateDoc,
+    deleteDoc,
+    query,
+    orderBy,
+    Timestamp
+} from 'firebase/firestore';
+```
+
+- auth & db: Mengimpor instance Firebase Auth dan Firestore dari file firebase.ts.
+- firestore methods: Menyediakan fungsi Firestore untuk CRUD:
+- collection: Membuat referensi ke koleksi dokumen.
+- addDoc: Menambahkan dokumen baru ke koleksi.
+- getDocs: Mengambil dokumen dalam koleksi.
+- doc, updateDoc, deleteDoc: Operasi pada dokumen spesifik.
+- query, orderBy: Menyusun data yang diambil.
+- Timestamp: Menambahkan timestamp pada dokumen.
+
+2. Interface data
+
+```typescript
+export interface Todo {
+    id?: string;
+    title: string;
+    description: string;
+    status: boolean;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+```
+- Todo: Struktur data Todo, dengan properti:
+- id: Opsional, diisi otomatis oleh Firestore.
+- title, description: Detail dari tugas.
+- status: Status tugas (selesai atau belum).
+- createdAt, updatedAt: Tanggal pembuatan dan pembaruan.
+
+3. Fungsi utility untuk CRUD
+
+- Mendapatkan Referensi Koleksi
+
+```typescript
+getTodoRef() {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('User not authenticated');
+    return collection(db, 'users', uid, 'todos');
+}
+```
+Fungsi ini mendapatkan referensi ke koleksi todos dari pengguna berdasarkan uid. Jika pengguna tidak terautentikasi, fungsi akan melempar error.
+
+- Menambahkan Data Todo
+
+![Tampilan tambah data](https://github.com/user-attachments/assets/e10b80a9-ade7-4d9c-81d7-8c72967fb877)
+
+
+![Tampilan Completed todo](https://github.com/user-attachments/assets/90ffa333-1847-4118-8111-8f2b91244ae8)
+
+
+
+```typescript
+async addTodo(todo: Omit<Todo, 'id'>) {
+    const todoRef = this.getTodoRef();
+    const docRef = await addDoc(todoRef, {
+        ...todo,
+        status: false,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+    });
+    return docRef.id;
+}
+```
+Menambahkan dokumen baru ke koleksi todos.
+Secara default, status diatur ke false dan menambahkan createdAt serta updatedAt
+
+
+- Memperbarui Data Todo
+
+![Tampilan Edit data](https://github.com/user-attachments/assets/20a929a5-d0c2-4825-93c5-04b06d1e5c88)
+
+
+![Tampilan Edit data - 2](https://github.com/user-attachments/assets/716b0758-7ec5-46f0-b228-bd4d7600ab3e)
+
+![Edit data succesfull](https://github.com/user-attachments/assets/4da5cc63-e6e1-48ef-a83f-47e7b98cc221)
+
+
+```typescript
+async updateTodo(id: string, todo: Partial<Todo>) {
+    const todoRef = this.getTodoRef();
+    const docRef = doc(todoRef, id);
+    await updateDoc(docRef, {
+        ...todo,
+        updatedAt: Timestamp.now()
+    });
+}
+```
+Memperbarui dokumen dengan ID tertentu.
+updatedAt diatur otomatis ke waktu terkini.
+
+- Menghapus Data Todo
+
+![Tampilan Hapus Data](https://github.com/user-attachments/assets/e8e43072-e8cc-4861-853d-c3eb97797b07)
+
+
+![Tampilan Home](https://github.com/user-attachments/assets/b209cdd1-810b-454e-ad05-3173d451a777)
+
+
+
+``` typescript
+async deleteTodo(id: string) {
+    const todoRef = this.getTodoRef();
+    const docRef = doc(todoRef, id);
+    await deleteDoc(docRef);
+}
+```
+
+Menghapus dokumen berdasarkan ID
+
+- Memperbarui Status Todo
+
+```typescript
+async updateStatus(id: string, status: boolean) {
+    const todoRef = this.getTodoRef();
+    const docRef = doc(todoRef, id);
+    await updateDoc(docRef, { status: status, updatedAt: Timestamp.now() });
+}
+```
+mengubah status todo, dari false ke true.
+
+
